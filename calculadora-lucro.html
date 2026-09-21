@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora de Lucro</title>
+<style>
+  :root{
+    --bg:#faf6f4; --card:#ffffff; --ink:#2b2226; --muted:#7a6b71; --line:#eaded9;
+    --accent:#b5527a; --accent-soft:#f6e4ec; --ok:#1f8a5b; --bad:#c0392b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#1a1417; --card:#251c20; --ink:#f3e9ed; --muted:#a8969d; --line:#3a2c32;
+      --accent:#e07aa5; --accent-soft:#3a2230; --ok:#4cc38a; --bad:#ff7b6b; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:1.5rem;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .tab{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 18px;border-radius:999px;cursor:pointer;font:inherit;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+  .params{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+  label.f{display:block;font-size:.85rem;color:var(--muted);font-weight:600}
+  .inp{display:flex;align-items:center;gap:6px;margin-top:4px;border:1px solid var(--line);border-radius:10px;padding:0 10px;background:var(--bg)}
+  .inp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .inp span{color:var(--muted)}
+  input{font:inherit;color:var(--ink);background:transparent;border:0;outline:0;width:100%;padding:10px 0;min-width:0}
+  input[type=text]{padding:8px 0}
+  .tbl{width:100%;border-collapse:collapse}
+  .tbl th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:center;padding:6px 6px}
+  .tbl td{padding:6px;border-top:1px solid var(--line);vertical-align:middle}
+  .tbl .num{text-align:center;white-space:nowrap}
+  @media (min-width:601px){ .w-q input,.w-p input{text-align:center} .w-p .inp{justify-content:center} }
+  .tbl td .inp{margin:0}
+  .w-q{width:96px}.w-p{width:130px}
+  .lucro{font-weight:700}
+  .pos{color:var(--ok)}.neg{color:var(--bad)}
+  .x{border:0;background:transparent;color:var(--muted);font-size:1.2rem;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .x:hover{color:var(--bad);background:var(--accent-soft)}
+  .actions{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .btn{border:1px dashed var(--accent);color:var(--accent);background:transparent;padding:8px 14px;border-radius:10px;cursor:pointer;font:inherit;font-weight:600}
+  .btn.ghost{border:0;color:var(--muted);font-weight:500}
+  .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  .tot{background:var(--accent-soft);border-radius:14px;padding:14px}
+  .tot small{display:block;color:var(--muted);font-weight:600;font-size:.8rem}
+  .tot b{font-size:1.4rem;display:block;margin-top:2px}
+  .tot.main{background:var(--accent);color:#fff}
+  .tot.main small{color:#ffe9f2}
+  .tot.main b.neg{color:#fff}
+  .note{color:var(--muted);font-size:.85rem;margin-top:10px}
+  @media (max-width:600px){
+    .tbl thead{display:none}
+    .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
+    .tbl tr{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .tbl td{border:0;padding:0}
+    .tbl td.name{grid-column:1/-1}
+    .tbl td[data-l]::before{content:attr(data-l);display:block;font-size:.72rem;color:var(--muted);font-weight:600}
+    .tbl .num{text-align:left}
+    .w-q,.w-p{width:auto}
+    .tbl td.del{position:absolute;right:16px}
+    .tbl tr{position:relative}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Calculadora de Lucro</h1>
+  <p class="sub">Simule quanto você fatura e lucra com cada equipamento. Todos os valores podem ser editados.</p>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div id="app"></div>
+</div>
+
+<script>
+const brl = n => (isFinite(n)?n:0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const num = v => { const n = parseFloat(String(v).replace(',','.')); return isFinite(n)?n:0; };
+
+/* Padrões extraídos da planilha. type "disparo": preço = disparos × valor do disparo.
+   type "fixo": cada procedimento tem preço próprio e o aluguel é descontado do lucro. */
+const DEFAULTS = {
+  ultraformer:{ nome:'Ultraformer 3', type:'disparo', valorDisparo:3.5, custoDisparo:1.9, rows:[
+    {n:'Papada',s:70,q:1},{n:'Terço inferior',s:70,q:1},{n:'Full face',s:200,q:5},{n:'Fox Eyes',s:50,q:2}]},
+  asgard:{ nome:'Asgard', type:'fixo', aluguel:800, rows:[
+    {n:'Placa Abdômen',p:500,q:1},{n:'Placa Culote',p:500,q:1},{n:'Placa Costas',p:500,q:5},{n:'Placa Dinâmica',p:600,q:2}]},
+  hybrius:{ nome:'Hybrius', type:'fixo', aluguel:500, rows:[
+    {n:'Flacidez no Umbigo',p:500,q:1},{n:'Flacidez no Culote',p:500,q:1},{n:'Flacidez nas Costas',p:500,q:5},{n:'Gordura Localizada',p:600,q:2}]},
+  holonyak:{ nome:'Holonyak', type:'fixo', aluguel:800, rows:[
+    {n:'Virilha',p:50,q:6},{n:'Axilas',p:70,q:7},{n:'Perna',p:70,q:3},{n:'Costas',p:100,q:1},
+    {n:'Barba',p:50,q:1},{n:'Meia Perna',p:50,q:2},{n:'Buço',p:30,q:7}]}
+};
+const KEY='calc-lucro-v1';
+let state, current='ultraformer';
+try { state = JSON.parse(localStorage.getItem(KEY)); } catch(e){}
+if(!state) state = JSON.parse(JSON.stringify(DEFAULTS));
+const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} };
+const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function calc(m){
+  let fat=0,custo=0,disparos=0;
+  const rows = m.rows.map(r=>{
+    if(m.type==='disparo'){
+      const total = r.s*r.q;
+      const f = total*m.valorDisparo, c = total*m.custoDisparo;
+      disparos += total; fat+=f; custo+=c;
+      return {fat:f,custo:c,lucro:f-c,preco:r.s*m.valorDisparo};
+    }
+    const f = r.p*r.q; fat+=f;
+    return {fat:f};
+  });
+  if(m.type==='fixo') custo = m.aluguel;
+  return {rows,fat,custo,disparos,lucro:fat-custo,margem:fat>0?(fat-custo)/fat*100:0};
+}
+
+function renderTabs(){
+  document.getElementById('tabs').innerHTML = Object.keys(state).map(k=>
+    `<button class="tab" role="tab" aria-selected="${k===current}" data-k="${k}">${esc(state[k].nome)}</button>`).join('');
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{current=b.dataset.k;render();});
+}
+
+function inp(prefix,val,field,idx,suffix,w){
+  return `<div class="inp">${prefix?`<span>${prefix}</span>`:''}<input inputmode="decimal" value="${val}" data-f="${field}" ${idx!==undefined?`data-i="${idx}"`:''}>${suffix?`<span>${suffix}</span>`:''}</div>`;
+}
+
+function render(){
+  renderTabs();
+  const m = state[current], isD = m.type==='disparo';
+  const params = isD
+    ? `<div><label class="f">Valor do disparo</label>${inp('R$',m.valorDisparo,'valorDisparo')}</div>
+       <div><label class="f">Custo por disparo</label>${inp('R$',m.custoDisparo,'custoDisparo')}</div>`
+    : `<div><label class="f">Valor da locação</label>${inp('R$',m.aluguel,'aluguel')}</div>`;
+
+  const head = isD
+    ? `<tr><th>Procedimento</th><th>Disparos por procedimento</th><th>Qtd. de procedimentos</th><th class="num">Faturamento<br>bruto</th><th class="num">Custo</th><th class="num">Lucro</th><th></th></tr>`
+    : `<tr><th>Procedimento</th><th>Valor</th><th>Quantidade</th><th class="num">Faturamento</th><th></th></tr>`;
+
+  const body = `<tbody id="body"></tbody>`;
+  document.getElementById('app').innerHTML = `
+    <div class="card"><div class="params">${params}</div></div>
+    <div class="card">
+      <table class="tbl"><thead>${head}</thead>${body}</table>
+      <div class="actions">
+        <button class="btn" id="add">+ Adicionar procedimento</button>
+        <button class="btn ghost" id="reset">Restaurar valores originais</button>
+      </div>
+    </div>
+    <div class="totals" id="totals"></div>
+    <p class="note">${isD
+      ? 'Altere o número de disparos de cada procedimento como quiser. Faturamento = disparos × quantidade × valor do disparo. Custo = disparos × quantidade × custo por disparo (R$ 1,90 por padrão). Lucro = faturamento − custo.'
+      : 'Lucro total = faturamento de todos os procedimentos − valor da locação da máquina.'}
+      Seus dados ficam salvos neste navegador.</p>`;
+
+  const tb = document.getElementById('body');
+  tb.innerHTML = m.rows.map((r,i)=>{
+    const name = `<td class="name"><div class="inp"><input type="text" value="${esc(r.n)}" data-f="n" data-i="${i}"></div></td>`;
+    const del = `<td class="del"><button class="x" data-del="${i}" title="Remover" aria-label="Remover">×</button></td>`;
+    return isD
+      ? `<tr>${name}<td data-l="Disparos por procedimento" class="w-q">${inp('',r.s,'s',i)}</td><td data-l="Quantidade" class="w-q">${inp('',r.q,'q',i)}</td>
+         <td class="num" data-l="Faturamento bruto" id="fat${i}"></td><td class="num" data-l="Custo" id="cus${i}"></td><td class="num lucro" data-l="Lucro" id="luc${i}"></td>${del}</tr>`
+      : `<tr>${name}<td data-l="Valor" class="w-p">${inp('R$',r.p,'p',i)}</td><td data-l="Quantidade" class="w-q">${inp('',r.q,'q',i)}</td>
+         <td class="num lucro" data-l="Faturamento" id="fat${i}"></td>${del}</tr>`;
+  }).join('');
+
+  tb.oninput = e=>{
+    const t=e.target, i=+t.dataset.i, f=t.dataset.f; if(f===undefined) return;
+    m.rows[i][f] = f==='n' ? t.value : num(t.value); update();
+  };
+  document.querySelector('.params').oninput = e=>{ m[e.target.dataset.f]=num(e.target.value); update(); };
+  tb.onclick = e=>{ const b=e.target.closest('[data-del]'); if(b){ m.rows.splice(+b.dataset.del,1); save(); render(); } };
+  document.getElementById('add').onclick = ()=>{ m.rows.push(isD?{n:'Novo procedimento',s:50,q:1}:{n:'Novo procedimento',p:0,q:1}); save(); render(); };
+  document.getElementById('reset').onclick = ()=>{ if(confirm('Restaurar os valores originais de '+m.nome+'?')){ state[current]=JSON.parse(JSON.stringify(DEFAULTS[current])); save(); render(); } };
+  update();
+}
+
+function update(){
+  const m=state[current], isD=m.type==='disparo', c=calc(m);
+  c.rows.forEach((r,i)=>{
+    document.getElementById('fat'+i).textContent = brl(r.fat);
+    if(isD){
+      document.getElementById('cus'+i).textContent = brl(r.custo);
+      const l=document.getElementById('luc'+i); l.textContent=brl(r.lucro); l.className='num lucro '+(r.lucro>=0?'pos':'neg');
+    }
+  });
+  const tot = (label,val,cls='')=>`<div class="tot ${cls}"><small>${label}</small><b>${val}</b></div>`;
+  document.getElementById('totals').innerHTML =
+    (isD?tot('Total de disparos',c.disparos.toLocaleString('pt-BR')):'') +
+    tot('Faturamento total',brl(c.fat)) +
+    tot(isD?'Custo total':'Locação',brl(c.custo)) +
+    tot('Margem',c.margem.toFixed(1).replace('.',',')+'%') +
+    tot('Lucro total',brl(c.lucro),'main');
+  save();
+}
+render();
+</script>
+</body>
+</html>
